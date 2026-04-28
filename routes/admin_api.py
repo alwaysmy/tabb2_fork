@@ -136,7 +136,7 @@ def init(config: ConfigManager, token_manager: TokenManager, log_store: LogStore
                     t["name"] = req.name
                 if req.value is not None:
                     t["value"] = req.value
-                    _tm.remove_client(token_id)
+                    await _tm.remove_client(token_id)
                 if req.enabled is not None:
                     t["enabled"] = req.enabled
                 _cfg.save()
@@ -148,7 +148,7 @@ def init(config: ConfigManager, token_manager: TokenManager, log_store: LogStore
         tokens = _cfg.get("tokens", default=[])
         _cfg.config["tokens"] = [t for t in tokens if t["id"] != token_id]
         _cfg.save()
-        _tm.remove_client(token_id)
+        await _tm.remove_client(token_id)
         return {"ok": True}
 
     @r.post("/tokens/{token_id}/test", dependencies=[Depends(admin_dep)])

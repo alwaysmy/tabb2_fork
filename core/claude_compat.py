@@ -325,9 +325,18 @@ class ToolifyParser:
 
         # 启用工具协议
         if self.thinking_enabled:
-            self._check_thinking_mode(char)
             if self.thinking_mode:
                 self.thinking_buffer += char
+                if self.thinking_buffer.endswith(THINKING_END_TAG):
+                    content = self.thinking_buffer[: -len(THINKING_END_TAG)]
+                    content = re.sub(r"^\s*>\s*", "", content)
+                    if content:
+                        self.events.append({"type": "thinking", "content": content})
+                    self.thinking_buffer = ""
+                    self.thinking_mode = False
+                return
+            self._check_thinking_mode(char)
+            if self.thinking_mode:
                 return
 
         if self.capturing:
@@ -343,6 +352,11 @@ class ToolifyParser:
             self.buffer = ""
             self.capturing = True
             self.capture_buffer = ""
+
+    def feed_text(self, text: str):
+        """批量输入文本，减少调用端逐字符取事件的开销。"""
+        for char in text:
+            self.feed_char(char)
 
     def finish(self):
         if self.buffer:
@@ -429,7 +443,7 @@ class ToolifyParser:
     def _handle_char_without_trigger(self, char: str):
         if not self.thinking_enabled:
             self.buffer += char
-            if len(self.buffer) >= 256:
+            if len(self.buffer) >= 16:
                 self.events.append({"type": "text", "content": self.buffer})
                 self.buffer = ""
             return
@@ -455,7 +469,7 @@ class ToolifyParser:
             self.thinking_buffer = ""
             return
 
-        if len(self.buffer) >= 256:
+        if len(self.buffer) >= 16:
             self.events.append({"type": "text", "content": self.buffer})
             self.buffer = ""
 

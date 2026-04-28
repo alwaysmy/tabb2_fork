@@ -16,6 +16,12 @@ class TokenManager:
         self._index: int = 0
         self._cooldowns: dict[str, float] = {}  # token_id -> 冷却截止时间戳
         self._lock = asyncio.Lock()
+        self._dirty = False
+        self._last_save_ts = 0.0
+        self._min_save_interval = 1.0
+        self._cached_available: list[dict] = []
+        self._cache_ts = 0.0
+        self._cache_ttl = 1.0
 
     @property
     def has_tokens(self) -> bool:
@@ -38,6 +44,28 @@ class TokenManager:
                 available.append(t)
         return available
 
+    def _mark_state_dirty(self):
+        self._dirty = True
+        self._cached_available = []
+
+    async def _save_if_needed(self, force: bool = False):
+        if not self._dirty:
+            return
+        now = time.time()
+        if not force and (now - self._last_save_ts) < self._min_save_interval:
+            return
+        await asyncio.to_thread(self.config.save)
+        self._dirty = False
+        self._last_save_ts = now
+
+    def _get_available_tokens_cached(self) -> list[dict]:
+        now = time.time()
+        if self._cached_available and (now - self._cache_ts) < self._cache_ttl:
+            return self._cached_available
+        self._cached_available = self._get_available_tokens()
+        self._cache_ts = now
+        return self._cached_available
+
     def _get_client(self, token_info: dict) -> TabbitClient:
         tid = token_info["id"]
         if tid not in self._clients:
@@ -51,7 +79,7 @@ class TokenManager:
 
     async def get_next(self) -> tuple[Optional[dict], Optional[TabbitClient]]:
         async with self._lock:
-            available = self._get_available_tokens()
+            available = self._get_available_tokens_cached()
             if not available:
                 return None, None
             self._index = self._index % len(available)
@@ -60,34 +88,42 @@ class TokenManager:
             client = self._get_client(token_info)
             return token_info, client
 
-    def report_success(self, token_id: str):
-        for t in self.config.get("tokens", default=[]):
-            if t["id"] == token_id:
-                t["total_requests"] = t.get("total_requests", 0) + 1
-                t["error_count"] = 0
-                t["last_used_at"] = time.strftime(
-                    "%Y-%m-%dT%H:%M:%SZ", time.gmtime()
-                )
-                t["status"] = "active"
-                break
-        self.config.save()
+    async def report_success(self, token_id: str):
+        async with self._lock:
+            for t in self.config.get("tokens", default=[]):
+                if t["id"] == token_id:
+                    t["total_requests"] = t.get("total_requests", 0) + 1
+                    t["error_count"] = 0
+                    t["last_used_at"] = time.strftime(
+                        "%Y-%m-%dT%H:%M:%SZ", time.gmtime()
+                    )
+                    t["status"] = "active"
+                    self._mark_state_dirty()
+                    break
+            await self._save_if_needed()
 
-    def report_error(self, token_id: str):
-        for t in self.config.get("tokens", default=[]):
-            if t["id"] == token_id:
-                t["error_count"] = t.get("error_count", 0) + 1
-                t["total_requests"] = t.get("total_requests", 0) + 1
-                if t["error_count"] >= MAX_CONSECUTIVE_ERRORS:
-                    self._cooldowns[t["id"]] = time.time() + COOLDOWN_SECONDS
-                    t["status"] = "cooldown"
-                else:
-                    t["status"] = "error"
-                break
-        self.config.save()
+    async def report_error(self, token_id: str):
+        async with self._lock:
+            for t in self.config.get("tokens", default=[]):
+                if t["id"] == token_id:
+                    t["error_count"] = t.get("error_count", 0) + 1
+                    t["total_requests"] = t.get("total_requests", 0) + 1
+                    if t["error_count"] >= MAX_CONSECUTIVE_ERRORS:
+                        self._cooldowns[t["id"]] = time.time() + COOLDOWN_SECONDS
+                        t["status"] = "cooldown"
+                    else:
+                        t["status"] = "error"
+                    self._mark_state_dirty()
+                    break
+            await self._save_if_needed()
 
-    def remove_client(self, token_id: str):
-        self._clients.pop(token_id, None)
-        self._cooldowns.pop(token_id, None)
+    async def remove_client(self, token_id: str):
+        async with self._lock:
+            client = self._clients.pop(token_id, None)
+            self._cooldowns.pop(token_id, None)
+            self._cached_available = []
+        if client:
+            await client.client.aclose()
 
     def get_token_status(self, token_id: str) -> str:
         now = time.time()
@@ -100,6 +136,11 @@ class TokenManager:
         return "unknown"
 
     async def close_all(self):
-        for client in self._clients.values():
+        async with self._lock:
+            clients = list(self._clients.values())
+            self._clients.clear()
+            self._cooldowns.clear()
+            self._cached_available = []
+            await self._save_if_needed(force=True)
+        for client in clients:
             await client.client.aclose()
-        self._clients.clear()

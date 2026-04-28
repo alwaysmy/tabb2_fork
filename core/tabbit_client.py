@@ -62,8 +62,10 @@ class TabbitClient:
 
     def _extract_user_id(self, token: str) -> str:
         try:
+            seg = token.split(".")[1]
+            seg += "=" * ((4 - len(seg) % 4) % 4)
             payload = json.loads(
-                base64.urlsafe_b64decode(token.split(".")[1] + "==")
+                base64.urlsafe_b64decode(seg)
             )
             return payload.get("id", payload.get("sub", str(uuid.uuid4())))
         except Exception:

@@ -174,12 +174,14 @@ async def _stream_claude_response(
 
             if et == "message_chunk" and "content" in ed:
                 text = ed["content"]
-                for char in text:
-                    parser.feed_char(char)
-                    events = parser.consume_events()
-                    if events:
-                        for line in writer.handle_events(events):
-                            yield line
+                parser.feed_text(text)
+                events = parser.consume_events()
+                if events:
+                    for line in writer.handle_events(events):
+                        yield line
+            elif et == "error":
+                err = ed.get("message", "unknown upstream error") if isinstance(ed, dict) else str(ed)
+                raise Exception(f"Tabbit upstream error: {err}")
             elif et in ("message_finish", "finish"):
                 break
 
@@ -191,12 +193,12 @@ async def _stream_claude_response(
                 yield line
 
         if token_id and _tm:
-            _tm.report_success(token_id)
+            await _tm.report_success(token_id)
 
     except Exception as e:
         error_msg = str(e)
         if token_id and _tm:
-            _tm.report_error(token_id)
+            await _tm.report_error(token_id)
         # 尝试发送错误后仍然关闭流
         parser.finish()
         final_events = parser.consume_events()
@@ -250,7 +252,7 @@ async def claude_messages(request: Request):
         session_id = await client.create_chat_session()
     except Exception as e:
         if token_id and _tm:
-            _tm.report_error(token_id)
+            await _tm.report_error(token_id)
         if _logs:
             _logs.add(
                 LogEntry(
@@ -289,12 +291,16 @@ async def claude_messages(request: Request):
         async for event in client.send_message(session_id, content, tabbit_model):
             if event["event"] == "message_chunk":
                 full_text += event["data"].get("content", "")
+            elif event["event"] == "error":
+                err_data = event.get("data", {})
+                err = err_data.get("message", "unknown upstream error") if isinstance(err_data, dict) else str(err_data)
+                raise Exception(f"Tabbit upstream error: {err}")
         if token_id and _tm:
-            _tm.report_success(token_id)
+            await _tm.report_success(token_id)
     except Exception as e:
         error_msg = str(e)
         if token_id and _tm:
-            _tm.report_error(token_id)
+            await _tm.report_error(token_id)
         raise HTTPException(status_code=502, detail=str(e))
     finally:
         duration = time.time() - start_time

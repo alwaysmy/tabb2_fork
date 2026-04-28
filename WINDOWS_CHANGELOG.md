@@ -117,6 +117,51 @@
 - `choices[0].message.content` 为非空
 - `POST /v1/messages/count_tokens` 正常
 
+## 8) Bug 修复批次（第 1 批）
+
+本批次优先处理可用性、并发安全和明显边界问题。
+
+### 8.1 已修复项
+
+- `routes/openai_compat.py`
+  - 修复流式上游错误处理：不再直接抛异常中断流，改为输出错误块并补发 `[DONE]`，避免客户端无限等待。
+  - 修复 `_build_content` 单条消息分支：仅当角色是 `user` 时走直通，避免 `system` 角色语义丢失。
+- `core/token_manager.py`
+  - `report_success` / `report_error` 改为异步并纳入统一锁，避免并发竞态更新。
+  - 引入脏标记 + 最小间隔落盘（异步 `to_thread`），降低每请求同步写盘对事件循环的阻塞。
+  - `remove_client` 改为异步并显式 `aclose()`，修复连接池泄漏风险。
+  - 增加可用 token 短时缓存，缓解高并发下全量扫描的锁内开销。
+- `routes/admin_api.py`
+  - 更新/删除 token 时改为 `await _tm.remove_client(...)`，确保旧 client 被释放。
+- `routes/claude_api.py`
+  - 非流式分支补充 `error` 事件处理，避免“空内容 + 200”假成功。
+  - 流式解析从“每字符取事件”改为“整块喂入后取事件”，减少解释器调用开销。
+- `core/tabbit_client.py`
+  - 修复 JWT payload 解码 padding：改为按长度动态补齐 `=`。
+- `core/claude_compat.py`
+  - 修复 thinking 结束标签检测时序（在同次字符输入内完成关闭判定）。
+  - 无工具模式 flush 阈值从 `256` 调整到 `16`，改善流式平滑度。
+  - 新增 `feed_text()` 供调用方按文本块喂入。
+
+### 8.2 本批次验证
+
+- 语法检查：`python -m py_compile` 通过（涉及文件全部可编译）。
+- 行为检查：`scripts/verify_batch1.py` 通过，覆盖以下关键点：
+  - JWT padding 解码兼容；
+  - parser flush 阈值生效；
+  - OpenAI 流式错误路径输出 error 块并收尾 `[DONE]`。
+- 基础接口检查：`GET /v1/models`、`POST /v1/messages/count_tokens` 返回 `200`。
+
+### 8.3 性能记录（可复现的本地对比）
+
+在相同输入下，对 `ToolifyParser` 进行调用方式对比（5 次平均）：
+
+- 旧调用模式（逐字符喂入 + 每字符 consume）：`49.8 ms`
+- 新调用模式（整块喂入 + 分批 consume）：`40.5 ms`
+- 提升：约 `1.23x`
+
+> 说明：受上游 Tabbit 会话可用性影响，端到端聊天延迟本批次未做稳定对比，仅保留可复现的本地解析性能对比。
+
 ---
 
 如果后续要继续适配上游协议变动，建议优先维护：

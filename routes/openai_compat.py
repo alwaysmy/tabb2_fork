@@ -43,7 +43,7 @@ class ChatCompletionRequest(BaseModel):
 
 def _build_content(messages: list[ChatMessage]) -> str:
     system_prompt = _cfg.get("proxy", "system_prompt") if _cfg else ""
-    if len(messages) == 1 and not system_prompt:
+    if len(messages) == 1 and not system_prompt and messages[0].role == "user":
         return messages[0].content
     parts = []
     if system_prompt:
@@ -92,6 +92,7 @@ async def _get_client_and_token(
 async def _stream_handler(client, session_id, content, tabbit_model, req_model, completion_id, token_name, token_id):
     start = time.time()
     error_msg = ""
+    stream_error = None
     try:
         yield (
             f"data: {json.dumps({'id': completion_id, 'object': 'chat.completion.chunk', 'choices': [{'index': 0, 'delta': {'role': 'assistant', 'content': ''}, 'finish_reason': None}]})}\n\n"
@@ -113,21 +114,31 @@ async def _stream_handler(client, session_id, content, tabbit_model, req_model, 
                 }
                 yield f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n"
             elif et == "error":
-                # Surface upstream errors instead of silently returning empty output.
                 err = ed.get("message", "unknown upstream error") if isinstance(ed, dict) else str(ed)
-                raise Exception(f"Tabbit upstream error: {err}")
+                stream_error = f"Tabbit upstream error: {err}"
+                error_msg = stream_error
+                err_chunk = {
+                    "id": completion_id,
+                    "object": "error",
+                    "error": {"message": stream_error, "type": "upstream_error"},
+                }
+                yield f"data: {json.dumps(err_chunk, ensure_ascii=False)}\n\n"
+                break
             elif et in ("message_finish", "finish"):
                 yield (
                     f"data: {json.dumps({'id': completion_id, 'object': 'chat.completion.chunk', 'choices': [{'index': 0, 'delta': {}, 'finish_reason': 'stop'}]})}\n\n"
                 )
 
         yield "data: [DONE]\n\n"
-        if token_id:
-            _tm.report_success(token_id)
+        if token_id and _tm:
+            if stream_error:
+                await _tm.report_error(token_id)
+            else:
+                await _tm.report_success(token_id)
     except Exception as e:
         error_msg = str(e)
-        if token_id:
-            _tm.report_error(token_id)
+        if token_id and _tm:
+            await _tm.report_error(token_id)
         raise
     finally:
         duration = time.time() - start
@@ -154,8 +165,8 @@ async def chat_completions(
     try:
         session_id = await client.create_chat_session()
     except Exception as e:
-        if token_id:
-            _tm.report_error(token_id)
+        if token_id and _tm:
+            await _tm.report_error(token_id)
         _logs.add(
             LogEntry(
                 model=req.model,
@@ -196,12 +207,12 @@ async def chat_completions(
                 err_data = event.get("data", {})
                 err = err_data.get("message", "unknown upstream error") if isinstance(err_data, dict) else str(err_data)
                 raise Exception(f"Tabbit upstream error: {err}")
-        if token_id:
-            _tm.report_success(token_id)
+        if token_id and _tm:
+            await _tm.report_success(token_id)
     except Exception as e:
         error_msg = str(e)
-        if token_id:
-            _tm.report_error(token_id)
+        if token_id and _tm:
+            await _tm.report_error(token_id)
         raise HTTPException(status_code=502, detail=str(e))
     finally:
         duration = time.time() - start
