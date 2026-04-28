@@ -140,6 +140,7 @@
   - 修复 JWT payload 解码 padding：改为按长度动态补齐 `=`。
 - `core/claude_compat.py`
   - 修复 thinking 结束标签检测时序（在同次字符输入内完成关闭判定）。
+  - 修复 thinking 开始标签前缀切片边界，避免前置文本丢/重。
   - 无工具模式 flush 阈值从 `256` 调整到 `16`，改善流式平滑度。
   - 新增 `feed_text()` 供调用方按文本块喂入。
 
@@ -149,6 +150,7 @@
 - 行为检查：`scripts/verify_batch1.py` 通过，覆盖以下关键点：
   - JWT padding 解码兼容；
   - parser flush 阈值生效；
+  - thinking 起止标签解析不滞后；
   - OpenAI 流式错误路径输出 error 块并收尾 `[DONE]`。
 - 基础接口检查：`GET /v1/models`、`POST /v1/messages/count_tokens` 返回 `200`。
 

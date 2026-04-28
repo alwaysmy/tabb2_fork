@@ -477,7 +477,7 @@ class ToolifyParser:
         if not self.thinking_mode:
             temp = self.buffer + char
             if temp.endswith(THINKING_START_TAG):
-                text_before = self.buffer[: -len(THINKING_START_TAG) + 1]
+                text_before = temp[: -len(THINKING_START_TAG)]
                 if text_before:
                     self.events.append({"type": "text", "content": text_before})
                 self.buffer = ""

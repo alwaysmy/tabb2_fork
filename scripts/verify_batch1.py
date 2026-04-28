@@ -37,6 +37,16 @@ def test_parser_flush_threshold():
     assert ev and ev[0]["type"] == "text" and len(ev[0]["content"]) == 16
 
 
+def test_thinking_close_no_lag():
+    p = ToolifyParser(trigger_signal="<<CALL_abc123>>", thinking_enabled=True)
+    p.feed_text("<thinking>abc</thinking>X")
+    p.finish()
+    ev = p.consume_events()
+    types = [e["type"] for e in ev]
+    assert "thinking" in types
+    assert any(e["type"] == "text" and "X" in e["content"] for e in ev)
+
+
 async def test_stream_handler_error():
     class DummyClient:
         async def send_message(self, *args, **kwargs):
@@ -70,6 +80,7 @@ async def test_stream_handler_error():
 async def main():
     test_jwt_padding()
     test_parser_flush_threshold()
+    test_thinking_close_no_lag()
     await test_stream_handler_error()
     print("verify_batch1: PASS")
 
