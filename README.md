@@ -68,6 +68,49 @@
 PORT=9900 docker compose up -d
 ```
 
+## 🪟 Windows 源码启动（不使用 Docker）
+
+如果您希望直接在 Windows 本机通过源码运行，可使用仓库内脚本快速启动。
+
+### 环境要求
+
+- Python 3.11+
+- PowerShell 5+（或 PowerShell 7）
+
+### 启动步骤
+
+1. 克隆仓库并进入目录
+
+```powershell
+git clone https://github.com/alwaysmy/tabb2_fork.git
+cd tabb2_fork
+```
+
+2. 一键启动（默认端口 `9900`）
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\start.ps1
+```
+
+3. 指定端口启动（可选）
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\start.ps1 -Port 8800
+```
+
+4. 访问管理页
+
+- `http://127.0.0.1:9900/admin`（或您指定的端口）
+- 默认管理员密码：`admin`（首次登录后请立即修改）
+
+### Windows 下 API 快速验证
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\test_api_windows.ps1 -BaseUrl http://127.0.0.1:9900/v1
+```
+
+> 注意：本地运行会生成 `config.json`，其中包含敏感 token。请勿提交该文件到仓库。
+
 ## ⚙️ 配置说明
 
 所有配置均存储在 `data/config.json` 文件中。您可以通过管理面板的 **设置** 页面进行修改，也可以直接编辑该文件（需要重启容器生效）。
@@ -95,9 +138,9 @@ PORT=9900 docker compose up -d
 ```bash
 curl http://localhost:8800/v1/chat/completions \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearar sk-your-proxy-key" \
-  -d 
-  "model": "best",
+  -H "Authorization: Bearer sk-your-proxy-key" \
+  -d '{
+    "model": "best",
     "messages": [
       {
         "role": "user",

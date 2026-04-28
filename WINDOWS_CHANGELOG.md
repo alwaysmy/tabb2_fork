@@ -30,6 +30,27 @@
 - Cookie 侧增加 `SAPISID`（与 `user_id` 对齐）。
 - SSE 解析增强：兼容仅有 `data:`、没有 `event:` 的分片流格式，减少“有返回但被解析器吞掉”的情况。
 
+### 1.1) 如何从新 cURL 反推出修改点（字段对照）
+
+以下对照用于说明：为什么看到那条新请求后，需要做当前这批代码改动。
+
+| 抓包里观察到的字段/行为 | 代码中的对应修改 |
+|---|---|
+| `POST https://web.tabbitbrowser.com/api/v1/chat/completion` | `core/tabbit_client.py` 中 `send_message()` 的上游路径从 `/chat/send` 切换到 `/api/v1/chat/completion` |
+| `Accept: text/event-stream` + 持续返回流分片 | `send_message()` 保持流式请求，并增强 SSE 解析逻辑，兼容仅有 `data:` 的返回格式 |
+| 请求头包含 `x-nonce`、`x-signature`、`x-timestamp`、`trace-id`、`unique-uuid`、`x-req-ctx` | 新增 `_build_chat_headers()` 动态生成这些头；`x-req-ctx` 从配置项读取 |
+| 请求头里的 `User-Agent` / `sec-ch-ua` 已是 146 版本风格 | `_get_headers()` 同步更新浏览器标识版本，降低与真实客户端特征偏差 |
+| Cookie 中含 `token`、`user_id`、`managed`、`NEXT_LOCALE`、`SAPISID` | `_get_cookies()` 中补充 `SAPISID`，并保留已有关键 cookie |
+| 请求体包含 `message_id`、`parallel_group_id`、`task_name`、`references` | `send_message()` 的 payload 补齐对应字段，避免上游校验失败或行为退化 |
+| 上游会通过流事件/数据表达错误 | `routes/openai_compat.py` 对 `event=error` 增加显式抛错，避免“200 但内容空” |
+
+此外，`x-req-ctx` 需要在不同调用路径可复用，因此新增了配置项并贯通到：
+
+- `core/token_manager.py`（轮询 token 客户端）
+- `routes/openai_compat.py`（OpenAI fallback）
+- `routes/claude_api.py`（Claude fallback）
+- `routes/admin_api.py`（token 测试）
+
 ## 2) 配置项扩展
 
 文件：`core/config.py`
