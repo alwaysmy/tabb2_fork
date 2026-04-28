@@ -552,7 +552,7 @@ async function renderSettings(el) {
         <div class="max-w-xs mb-4">
           <label class="block text-sm text-zinc-400 mb-1.5">默认 Tabbit 模型</label>
           <select id="sClaudeModel" class="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100">
-            ${['best','gpt-5.2-chat','gpt-5.1-chat','gemini-3.1-pro','gemini-3-flash','gemini-2.5-flash','claude-sonnet-4.6','claude-haiku-4.5','glm-5','deepseek-v3.2','minimax-m2.5','kimi-k2.5','qwen3.5-plus','doubao-seed-1.8'].map(m =>
+            ${(s.available_models || ['best']).map(m =>
               '<option value="' + m + '"' + (s.claude?.default_model === m ? ' selected' : '') + '>' + m + '</option>'
             ).join('')}
           </select>

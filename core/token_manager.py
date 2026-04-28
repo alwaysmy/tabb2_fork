@@ -45,6 +45,7 @@ class TokenManager:
                 token_info["value"],
                 self.config.get("tabbit", "base_url"),
                 self.config.get("tabbit", "client_id"),
+                self.config.get("tabbit", "req_ctx"),
             )
         return self._clients[tid]
 

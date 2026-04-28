@@ -13,6 +13,7 @@ DEFAULT_CONFIG = {
     "tabbit": {
         "base_url": "https://web.tabbitbrowser.com",
         "client_id": "e7fa44387b1238ef1f6f",
+        "req_ctx": "MC4yOS40OSgxMDAyOTQ5KQ==",
     },
     "tokens": [],
     "proxy": {"api_key": "", "system_prompt": ""},

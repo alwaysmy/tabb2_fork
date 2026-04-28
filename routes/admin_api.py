@@ -9,7 +9,7 @@ from typing import Optional
 from core.config import ConfigManager, hash_password
 from core.auth import create_jwt, verify_password, require_admin
 from core.token_manager import TokenManager
-from core.tabbit_client import TabbitClient
+from core.tabbit_client import TabbitClient, MODEL_MAP
 from core.log_store import LogStore
 
 logger = logging.getLogger("tabbit2openai")
@@ -165,6 +165,7 @@ def init(config: ConfigManager, token_manager: TokenManager, log_store: LogStore
             target["value"],
             _cfg.get("tabbit", "base_url"),
             _cfg.get("tabbit", "client_id"),
+            _cfg.get("tabbit", "req_ctx"),
         )
         try:
             session_id = await client.create_chat_session()
@@ -252,6 +253,7 @@ def init(config: ConfigManager, token_manager: TokenManager, log_store: LogStore
                 "system_prompt": _cfg.get("proxy", "system_prompt", default=""),
             },
             "claude": _cfg.get("claude", default={"default_model": "best", "system_prompt": ""}),
+            "available_models": list(MODEL_MAP.keys()),
             "logging": _cfg.get("logging"),
         }
 

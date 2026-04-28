@@ -84,6 +84,7 @@ async def _get_client_and_token(
             token,
             _cfg.get("tabbit", "base_url"),
             _cfg.get("tabbit", "client_id"),
+            _cfg.get("tabbit", "req_ctx"),
         )
     return _fallback_clients[token], "bearer", ""
 
@@ -111,6 +112,10 @@ async def _stream_handler(client, session_id, content, tabbit_model, req_model, 
                     ],
                 }
                 yield f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n"
+            elif et == "error":
+                # Surface upstream errors instead of silently returning empty output.
+                err = ed.get("message", "unknown upstream error") if isinstance(ed, dict) else str(ed)
+                raise Exception(f"Tabbit upstream error: {err}")
             elif et in ("message_finish", "finish"):
                 yield (
                     f"data: {json.dumps({'id': completion_id, 'object': 'chat.completion.chunk', 'choices': [{'index': 0, 'delta': {}, 'finish_reason': 'stop'}]})}\n\n"
@@ -187,6 +192,10 @@ async def chat_completions(
         async for event in client.send_message(session_id, content, tabbit_model):
             if event["event"] == "message_chunk":
                 full_text += event["data"].get("content", "")
+            elif event["event"] == "error":
+                err_data = event.get("data", {})
+                err = err_data.get("message", "unknown upstream error") if isinstance(err_data, dict) else str(err_data)
+                raise Exception(f"Tabbit upstream error: {err}")
         if token_id:
             _tm.report_success(token_id)
     except Exception as e:
