@@ -474,23 +474,17 @@ class ToolifyParser:
             self.buffer = ""
 
     def _check_thinking_mode(self, char: str):
-        if not self.thinking_mode:
-            temp = self.buffer + char
-            if temp.endswith(THINKING_START_TAG):
-                text_before = temp[: -len(THINKING_START_TAG)]
-                if text_before:
-                    self.events.append({"type": "text", "content": text_before})
-                self.buffer = ""
-                self.thinking_mode = True
-                self.thinking_buffer = ""
-        else:
-            if self.thinking_buffer.endswith(THINKING_END_TAG):
-                content = self.thinking_buffer[: -len(THINKING_END_TAG)]
-                content = re.sub(r"^\s*>\s*", "", content)
-                if content:
-                    self.events.append({"type": "thinking", "content": content})
-                self.thinking_buffer = ""
-                self.thinking_mode = False
+        # 仅在非 thinking 模式下调用：结束标签在 feed_char 上半段处理。
+        if self.thinking_mode:
+            return
+        temp = self.buffer + char
+        if temp.endswith(THINKING_START_TAG):
+            text_before = temp[: -len(THINKING_START_TAG)]
+            if text_before:
+                self.events.append({"type": "text", "content": text_before})
+            self.buffer = ""
+            self.thinking_mode = True
+            self.thinking_buffer = ""
 
 
 # ── Claude SSE 输出 ──

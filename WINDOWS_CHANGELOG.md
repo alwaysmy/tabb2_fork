@@ -173,6 +173,14 @@
 - 若仅一侧能抠出 id → 更像本地请求特征影响了返回体；
 - 若两侧同一状态码且都抠不出（例如同为 403 且正文为 `Service Unavailable`）→ 更像远端统一不可用或账号/网关问题，而不是单次代码改动特有的 UA 差异。
 
+### 9.1 实测备注
+
+在未走代理时曾出现两侧均为 **403 + Service Unavailable**（与 UA 指纹无关）；走代理后同一脚本下两侧均为 **200** 且均能解析 `session_id`，说明当时主要是**网络可达性**，而非新旧指纹分叉。
+
+## 10) TokenManager：锁外落盘
+
+将 `report_success` / `report_error` / `close_all` 中的 `await _save_if_needed(...)` 移到 `async with self._lock` **之外**，避免磁盘 I/O 占用全局锁、阻塞 `get_next()`。
+
 ---
 
 如果后续要继续适配上游协议变动，建议优先维护：

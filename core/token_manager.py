@@ -100,7 +100,8 @@ class TokenManager:
                     t["status"] = "active"
                     self._mark_state_dirty()
                     break
-            await self._save_if_needed()
+        # 磁盘 I/O 放到锁外，避免阻塞 get_next 等其他持锁路径
+        await self._save_if_needed()
 
     async def report_error(self, token_id: str):
         async with self._lock:
@@ -115,7 +116,7 @@ class TokenManager:
                         t["status"] = "error"
                     self._mark_state_dirty()
                     break
-            await self._save_if_needed()
+        await self._save_if_needed()
 
     async def remove_client(self, token_id: str):
         async with self._lock:
@@ -141,6 +142,6 @@ class TokenManager:
             self._clients.clear()
             self._cooldowns.clear()
             self._cached_available = []
-            await self._save_if_needed(force=True)
+        await self._save_if_needed(force=True)
         for client in clients:
             await client.client.aclose()
