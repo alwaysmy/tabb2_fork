@@ -1,3 +1,4 @@
+import html
 import re
 import json
 import uuid
@@ -168,7 +169,9 @@ class TabbitClient:
             "parallel_group_id": None,
             "task_name": "chat",
             "agent_mode": False,
-            "metadatas": {"html_content": f"<p>{content}</p>"},
+            "metadatas": {
+                "html_content": f"<p>{html.escape(content, quote=False)}</p>",
+            },
             "references": [],
             "entity": {
                 "key": hashlib.md5(b"").hexdigest(),

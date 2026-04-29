@@ -135,6 +135,7 @@ class TokenManager:
             if r["error_streak"] >= MAX_CONSECUTIVE_ERRORS:
                 self._cooldowns[token_id] = time.time() + COOLDOWN_SECONDS
                 r["status"] = "cooldown"
+                self._cached_available = []
             else:
                 r["status"] = "error"
 
