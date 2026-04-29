@@ -34,10 +34,13 @@ _cfg: ConfigManager | None = None
 _logs: LogStore | None = None
 _fallback_clients: dict[str, TabbitClient] = {}
 
-# Claude 模型名 → Tabbit 模型名映射
+# Claude 请求模型名前缀 → MODEL_MAP 的 key（再解析为 Tabbit 展示名）。
+# 用于带日期后缀的 id（如 claude-opus-4-7-20250219）；target 须为 MODEL_MAP 中存在的 key。
 CLAUDE_MODEL_MAP = {
     "claude-opus-4-6": "best",
-    "claude-sonnet-4-6": "best",
+    "claude-opus-4.7": "claude-opus-4.7",
+    "claude-opus-4-7": "claude-opus-4.7",
+    "claude-sonnet-4-6": "claude-sonnet-4.6",
     "claude-sonnet-4-5": "best",
     "claude-haiku-4-5": "best",
     "claude-3-5-sonnet": "best",
