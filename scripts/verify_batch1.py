@@ -30,11 +30,11 @@ def test_jwt_padding():
 
 def test_parser_flush_threshold():
     p = ToolifyParser(trigger_signal=None, thinking_enabled=False)
-    p.feed_text("a" * 15)
+    p.feed_text("a" * 127)
     assert p.consume_events() == []
-    p.feed_text("b")
+    p.feed_text("a")
     ev = p.consume_events()
-    assert ev and ev[0]["type"] == "text" and len(ev[0]["content"]) == 16
+    assert ev and ev[0]["type"] == "text" and len(ev[0]["content"]) == 128
 
 
 def test_thinking_close_no_lag():

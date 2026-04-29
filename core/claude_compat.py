@@ -443,7 +443,7 @@ class ToolifyParser:
     def _handle_char_without_trigger(self, char: str):
         if not self.thinking_enabled:
             self.buffer += char
-            if len(self.buffer) >= 16:
+            if len(self.buffer) >= 128:
                 self.events.append({"type": "text", "content": self.buffer})
                 self.buffer = ""
             return
@@ -469,7 +469,7 @@ class ToolifyParser:
             self.thinking_buffer = ""
             return
 
-        if len(self.buffer) >= 16:
+        if len(self.buffer) >= 128:
             self.events.append({"type": "text", "content": self.buffer})
             self.buffer = ""
 
