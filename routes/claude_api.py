@@ -181,7 +181,12 @@ async def _stream_claude_response(
                         yield line
             elif et == "error":
                 err = ed.get("message", "unknown upstream error") if isinstance(ed, dict) else str(ed)
-                raise Exception(f"Tabbit upstream error: {err}")
+                error_msg = f"Tabbit upstream error: {err}"
+                if token_id and _tm:
+                    await _tm.report_error(token_id)
+                for line in writer.emit_fatal_error(error_msg, error_type="upstream_error"):
+                    yield line
+                return
             elif et in ("message_finish", "finish"):
                 break
 
@@ -199,12 +204,9 @@ async def _stream_claude_response(
         error_msg = str(e)
         if token_id and _tm:
             await _tm.report_error(token_id)
-        # 尝试发送错误后仍然关闭流
-        parser.finish()
-        final_events = parser.consume_events()
-        if final_events:
-            for line in writer.handle_events(final_events):
-                yield line
+        for line in writer.emit_fatal_error(error_msg, error_type="stream_exception"):
+            yield line
+        return
     finally:
         duration = time.time() - start_time
         if _logs:

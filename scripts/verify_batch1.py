@@ -9,7 +9,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from core.auth import _b64url_decode
-from core.claude_compat import ToolifyParser
+from core.claude_compat import ClaudeSSEWriter, ToolifyParser
 from core.tabbit_client import TabbitClient
 import routes.openai_compat as openai_compat
 
@@ -43,6 +43,15 @@ def test_auth_b64url_padding():
     for raw in (b"{}", b"x" * 7, b"y" * 22, b'{"role":"admin","exp":9999999999}'):
         enc = base64.urlsafe_b64encode(raw).decode().rstrip("=")
         assert _b64url_decode(enc) == raw
+
+
+def test_claude_sse_fatal_error():
+    w = ClaudeSSEWriter("abc123", "claude-proxy", 10)
+    lines = w.emit_fatal_error("connection reset", error_type="stream_exception")
+    blob = "".join(lines)
+    assert "event: error" in blob
+    assert "connection reset" in blob
+    assert w.finished is True
 
 
 def test_multi_invoke_same_buffer():
@@ -138,6 +147,7 @@ async def main():
     test_jwt_padding()
     test_auth_b64url_padding()
     test_parser_flush_threshold()
+    test_claude_sse_fatal_error()
     test_multi_invoke_same_buffer()
     test_thinking_close_no_lag()
     await test_stream_handler_error()

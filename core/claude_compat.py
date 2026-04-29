@@ -520,6 +520,30 @@ class ClaudeSSEWriter:
             },
         )
 
+    def emit_fatal_error(
+        self, message: str, *, error_type: str = "api_error"
+    ) -> list[str]:
+        """
+        流中途失败：关闭已打开的 content block，发送 Anthropic 风格 error 事件。
+        不发送正常 message_stop，避免客户端把失败当成成功收尾。
+        """
+        if self.finished:
+            return []
+        self.finished = True
+        lines: list[str] = []
+        lines.extend(self._flush_text_block())
+        lines.extend(self._end_thinking_block())
+        lines.append(
+            self._sse(
+                "error",
+                {
+                    "type": "error",
+                    "error": {"type": error_type, "message": message},
+                },
+            )
+        )
+        return lines
+
     def handle_events(self, events: list[dict]) -> list[str]:
         """处理解析器事件，返回 SSE 行列表"""
         output = []
