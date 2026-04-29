@@ -14,6 +14,15 @@ from core.log_store import LogStore
 
 logger = logging.getLogger("tabbit2openai")
 
+
+async def _effective_token_status(tm: TokenManager, t: dict) -> str:
+    """内存状态优先；进程重启后尚无运行时数据时回退到配置文件中的 status。"""
+    s = await tm.get_token_status(t["id"])
+    if s != "unknown":
+        return s
+    return t.get("status", "unknown")
+
+
 # 模块级状态
 _cfg: ConfigManager | None = None
 _tm: TokenManager | None = None
@@ -78,10 +87,12 @@ def init(config: ConfigManager, token_manager: TokenManager, log_store: LogStore
     @r.get("/status", dependencies=[Depends(admin_dep)])
     async def get_status():
         tokens = _cfg.get("tokens", default=[])
-        active = sum(
-            1 for t in tokens
-            if t.get("enabled") and t.get("status") == "active"
-        )
+        active = 0
+        for t in tokens:
+            if not t.get("enabled", True):
+                continue
+            if await _effective_token_status(_tm, t) == "active":
+                active += 1
         return {
             "total_requests": _logs.total_requests,
             "total_success": _logs.total_success,
@@ -102,7 +113,10 @@ def init(config: ConfigManager, token_manager: TokenManager, log_store: LogStore
         result = []
         for t in tokens:
             info = {**t}
-            info["status"] = _tm.get_token_status(t["id"])
+            overlay = await _tm.runtime_overlay(t["id"])
+            if overlay:
+                info.update(overlay)
+            info["status"] = await _effective_token_status(_tm, t)
             v = info.get("value", "")
             info["value_preview"] = (v[:10] + "...") if len(v) > 10 else v
             del info["value"]
@@ -169,13 +183,10 @@ def init(config: ConfigManager, token_manager: TokenManager, log_store: LogStore
         )
         try:
             session_id = await client.create_chat_session()
-            target["status"] = "active"
-            target["error_count"] = 0
-            _cfg.save()
+            await _tm.record_test_outcome(token_id, True)
             return {"ok": True, "session_id": session_id}
         except Exception as e:
-            target["status"] = "error"
-            _cfg.save()
+            await _tm.record_test_outcome(token_id, False)
             return {"ok": False, "error": str(e)}
         finally:
             await client.client.aclose()
