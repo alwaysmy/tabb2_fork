@@ -16,7 +16,9 @@ def _b64url_encode(data: bytes) -> str:
 
 
 def _b64url_decode(s: str) -> bytes:
-    s += "=" * (4 - len(s) % 4)
+    pad = (4 - len(s) % 4) % 4
+    if pad:
+        s += "=" * pad
     return base64.urlsafe_b64decode(s)
 
 

@@ -139,7 +139,17 @@ async def _stream_handler(client, session_id, content, tabbit_model, req_model, 
         error_msg = str(e)
         if token_id and _tm:
             await _tm.report_error(token_id)
-        raise
+        err_chunk = {
+            "id": completion_id,
+            "object": "error",
+            "error": {
+                "message": error_msg,
+                "type": "stream_exception",
+            },
+        }
+        yield f"data: {json.dumps(err_chunk, ensure_ascii=False)}\n\n"
+        yield "data: [DONE]\n\n"
+        return
     finally:
         duration = time.time() - start
         _logs.add(

@@ -378,67 +378,53 @@ class ToolifyParser:
         self.events.clear()
         return pending
 
+    def _strip_inter_tool_prefix(self, after: str) -> str:
+        """与 normalize_blocks 一致：各 tool_use 间为 (trigger_signal + '\\n') 再接 <invoke>。"""
+        rest = after.lstrip("\n\r ")
+        prefix = (self.trigger_signal + "\n") if self.trigger_signal else ""
+        if prefix and rest.startswith(prefix):
+            rest = rest[len(prefix) :]
+        return rest.lstrip("\n\r ")
+
     def _try_emit_invokes(self, force: bool = False):
-        lower = self.capture_buffer.lower()
-        start_idx = lower.find("<invoke")
+        while True:
+            lower = self.capture_buffer.lower()
+            start_idx = lower.find("<invoke")
 
-        if start_idx == -1:
-            if not force:
+            if start_idx == -1:
+                if not force:
+                    return
+                if self.capture_buffer:
+                    self.events.append({"type": "text", "content": self.capture_buffer})
+                    self.capture_buffer = ""
+                self.capturing = False
                 return
-            if self.capture_buffer:
-                self.events.append({"type": "text", "content": self.capture_buffer})
-                self.capture_buffer = ""
-            self.capturing = False
-            return
 
-        end_idx = self.capture_buffer.find("</invoke>", start_idx)
-        if end_idx == -1:
-            return  # 等待更多数据
+            end_idx = self.capture_buffer.find("</invoke>", start_idx)
+            if end_idx == -1:
+                return  # 等待更多数据
 
-        end_pos = end_idx + len("</invoke>")
-        invoke_xml = self.capture_buffer[start_idx:end_pos]
+            end_pos = end_idx + len("</invoke>")
+            invoke_xml = self.capture_buffer[start_idx:end_pos]
+            before = self.capture_buffer[:start_idx]
+            after = self.capture_buffer[end_pos:]
 
-        # 检查 </invoke> 后面是否有非工具内容
-        after = self.capture_buffer[end_pos:]
-        after_trimmed = after.lstrip()
-        if (
-            after_trimmed
-            and not after_trimmed.lower().startswith("<invoke")
-            and not force
-        ):
-            self.events.append({"type": "text", "content": self.capture_buffer})
-            self.capture_buffer = ""
-            self.capturing = False
-            return
+            if before:
+                self.events.append({"type": "text", "content": before})
 
-        # 前面的文本
-        before = self.capture_buffer[:start_idx]
-        if before:
-            self.events.append({"type": "text", "content": before})
+            parsed = _parse_invoke_xml(invoke_xml)
+            if parsed:
+                self.events.append({"type": "tool_call", "call": parsed})
+            else:
+                self.events.append({"type": "text", "content": invoke_xml})
 
-        parsed = _parse_invoke_xml(invoke_xml)
-        if parsed:
-            self.events.append({"type": "tool_call", "call": parsed})
-            # 过滤后续 <invoke> 标签
-            remaining = after
-            while True:
-                trimmed = remaining.lstrip()
-                if not trimmed:
-                    break
-                if trimmed.lower().startswith("<invoke"):
-                    next_end = trimmed.find("</invoke>")
-                    if next_end != -1:
-                        remaining = trimmed[next_end + len("</invoke>") :]
-                        continue
-                # 非工具内容，保留
-                if trimmed.strip():
-                    self.events.append({"type": "text", "content": remaining})
-                break
-        else:
-            self.events.append({"type": "text", "content": self.capture_buffer})
+            rest = self._strip_inter_tool_prefix(after)
+            self.capture_buffer = rest
 
-        self.capture_buffer = ""
-        self.capturing = False
+            if not self.capture_buffer:
+                self.capturing = False
+                return
+            # 同一缓冲区内可能还有下一个完整 <invoke>...</invoke>
 
     def _handle_char_without_trigger(self, char: str):
         if not self.thinking_enabled:
